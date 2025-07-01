@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文件断点续传示例</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .upload-container, .download-container {
+            margin-top: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .progress {
+            margin-top: 10px;
+            height: 25px;
+        }
+        .file-list {
+            margin-top: 20px;
+        }
+        .file-item {
+            padding: 10px;
+            margin-bottom: 5px;
+            border: 1px solid #eee;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1 class="mt-4 mb-4">文件断点续传示例</h1>
+
+    <!-- 功能说明 -->
+    <div class="alert alert-info">
+        <h5>功能特点：</h5>
+        <ul class="mb-0">
+            <li><strong>断点续传：</strong>支持网络中断后继续上传，无需重新开始</li>
+            <li><strong>分片上传：</strong>大文件自动分片，每片1MB，提高上传成功率</li>
+            <li><strong>并发上传：</strong>支持同时上传3个分片，提升上传速度</li>
+            <li><strong>进度显示：</strong>实时显示上传进度和分片状态</li>
+            <li><strong>文件管理：</strong>支持文件下载和删除操作</li>
+        </ul>
+    </div>
+
+    <!-- 上传区域 -->
+    <div class="upload-container">
+        <h3>文件上传（支持断点续传）</h3>
+        <div class="mb-3">
+            <label for="fileUpload" class="form-label">选择文件</label>
+            <input class="form-control" type="file" id="fileUpload">
+        </div>
+        <button id="uploadBtn" class="btn btn-primary">上传文件</button>
+        <div class="progress d-none" id="uploadProgress">
+            <div class="progress-bar" role="progressbar" style="width: 0%;" id="uploadProgressBar">0%</div>
+        </div>
+        <div id="uploadStatus" class="mt-2"></div>
+    </div>
+
+    <div class="download-container">
+        <h3>文件列表</h3>
+        <button id="refreshBtn" class="btn btn-secondary mb-3">刷新文件列表</button>
+        <div id="fileList" class="file-list">
+            <div class="alert alert-info">点击刷新按钮获取文件列表</div>
+        </div>
+    </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/spark-md5@3.0.2/spark-md5.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/resumablejs@1.1.0/resumable.min.js"></script>
+
+<script>
+    // 基础配置
+    const API_BASE_URL = 'http://localhost:8081/api';
+
+    // DOM元素
+    const uploadBtn = document.getElementById('uploadBtn');
+    const fileUpload = document.getElementById('fileUpload');
+    const uploadProgress = document.getElementById('uploadProgress');
+    const uploadProgressBar = document.getElementById('uploadProgressBar');
+    const uploadStatus = document.getElementById('uploadStatus');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const fileList = document.getElementById('fileList');
+    const downloadProgress = document.getElementById('downloadProgress');
+    const downloadProgressBar = document.getElementById('downloadProgressBar');
+    const downloadStatus = document.getElementById('downloadStatus');
+
+    // 初始化resumable.js
+    const resumable = new Resumable({
+        target: `${API_BASE_URL}/upload/chunk`,
+        query: {},
+        chunkSize: 1 * 1024 * 1024, // 分片大小为1MB
+        simultaneousUploads: 3,
+        testChunks: true,
+        throttleProgressCallbacks: 1,
+        chunkNumberParameterName: 'chunkNumber',
+        chunkSizeParameterName: 'chunkSize',
+        currentChunkSizeParameterName: 'currentChunkSize',
+        totalSizeParameterName: 'totalSize',
+        identifierParameterName: 'identifier',
+        fileNameParameterName: 'filename',
+        totalChunksParameterName: 'totalChunks',
+        method: 'POST',
+        headers: {
+            'Accept': 'application/json'
+        },
+        testMethod: 'GET',
+        testTarget: `${API_BASE_URL}/upload/check`
+    });
+
+    // 分配事件监听器
+    resumable.assignBrowse(fileUpload);
+
+    // 文件添加事件 - 显示文件名
+    resumable.on('fileAdded', function(file) {
+        console.log('File added:', file);
+        // 显示已选择的文件名
+        uploadStatus.innerHTML = `<div class="alert alert-info">已选择文件: ${file.fileName} (${formatFileSize(file.size)})</div>`;
+
+        // 显示文件信息卡片
+        const fileInfoDiv = document.createElement('div');
+        fileInfoDiv.className = 'card mt-2 mb-2';
+        fileInfoDiv.innerHTML = `
+            <div class="card-body">
+                <h5 class="card-title">文件信息</h5>
+                <p class="card-text">文件名: ${file.fileName}</p>
+                <p class="card-text">大小: ${formatFileSize(file.size)}</p>
+                <p class="card-text">类型: ${file.file.type || '未知'}</p>
+                <p class="card-text">分片数: ${file.chunks.length}</p>
+            </div>
+        `;
+
+        // 清除旧的文件信息
+        const oldFileInfo = document.querySelector('.card');
+        if (oldFileInfo) {
+            oldFileInfo.remove();
+        }
+
+        // 插入到uploadStatus之前
+        uploadStatus.parentNode.insertBefore(fileInfoDiv, uploadStatus);
+    });
+
+    // 格式化文件大小
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    // 分块开始事件
+    resumable.on('chunkingStart', function(file) {
+        console.log('开始分块:', file.fileName);
+    });
+
+    // 分块进度事件
+    resumable.on('chunkingProgress', function(file, ratio) {
+        console.log('分块进度:', Math.floor(ratio * 100) + '%');
+    });
+
+    // 分块完成事件
+    resumable.on('chunkingComplete', function(file) {
+        console.log('分块完成');
+    });
+
+    // 上传开始事件
+    resumable.on('uploadStart', function() {
+        console.log('开始上传');
+        uploadStatus.innerHTML = '<div class="alert alert-info">开始上传文件块...</div>';
+        window.mergeCalled = false;
+    });
+
+    // 上传进度事件
+    resumable.on('fileProgress', function(file) {
+        const progress = Math.floor(file.progress() * 100);
+        uploadProgress.classList.remove('d-none');
+        uploadProgressBar.style.width = `${progress}%`;
+        uploadProgressBar.textContent = `${progress}%`;
+
+        // 显示当前上传块信息
+        const uploadedChunks = file.chunks.filter(chunk => chunk.status === 2).length;
+        const totalChunks = file.chunks.length;
+        uploadStatus.innerHTML = `<div class="alert alert-info">正在上传: ${uploadedChunks}/${totalChunks} 块 (${progress}%)</div>`;
+    });
+
+    // 总体进度事件
+    resumable.on('progress', function() {
+        console.log('总体进度:', Math.floor(resumable.progress() * 100) + '%');
+    });
+
+    // 上传成功事件
+    resumable.on('fileSuccess', function(file, response) {
+        console.log('文件上传成功，准备合并');
+        const parsedResponse = JSON.parse(response);
+        if (parsedResponse.success) {
+            // 避免重复调用合并接口
+            if (window.mergeCalled) {
+                console.log('合并已经调用过，跳过');
+                return;
+            }
+            window.mergeCalled = true;
+
+            uploadStatus.innerHTML = '<div class="alert alert-info">所有分块上传成功，正在合并文件...</div>';
+
+            // 使用FormData发送合并请求
+            const formData = new FormData();
+            formData.append('identifier', file.uniqueIdentifier);
+            formData.append('filename', file.fileName);
+            formData.append('totalChunks', file.chunks.length);
+
+            axios.post(`${API_BASE_URL}/upload/merge`, formData)
+                .then(function(response) {
+                    if (response.data.success) {
+                        uploadStatus.innerHTML = `<div class="alert alert-success">文件上传并合并成功！</div>`;
+                        // 刷新文件列表
+                        refreshFileList();
+                    } else {
+                        uploadStatus.innerHTML = `<div class="alert alert-danger">文件合并失败: ${response.data.message}</div>`;
+                    }
+                })
+                .catch(function(error) {
+                    uploadStatus.innerHTML = `<div class="alert alert-danger">合并请求出错: ${error.message}</div>`;
+                });
+        } else {
+            uploadStatus.innerHTML = `<div class="alert alert-danger">上传失败: ${parsedResponse.message}</div>`;
+        }
+    });
+
+    // 块上传错误事件
+    resumable.on('chunkUploadError', function(file, chunk, message) {
+        console.error('块上传错误:', chunk.offset, message);
+        uploadStatus.innerHTML = `<div class="alert alert-warning">块 ${chunk.offset+1}/${file.chunks.length} 上传失败，系统将重试</div>`;
+    });
+
+    // 上传错误事件
+    resumable.on('fileError', function(file, response) {
+        try {
+            const parsedResponse = JSON.parse(response);
+            uploadStatus.innerHTML = `<div class="alert alert-danger">上传错误: ${parsedResponse.message || '未知错误'}</div>`;
+        } catch (e) {
+            uploadStatus.innerHTML = `<div class="alert alert-danger">上传错误: ${response || '未知错误'}</div>`;
+        }
+    });
+
+    // 点击上传按钮事件
+    uploadBtn.addEventListener('click', function() {
+        if (!resumable.files.length) {
+            uploadStatus.innerHTML = '<div class="alert alert-warning">请先选择文件！</div>';
+            return;
+        }
+        uploadStatus.innerHTML = '<div class="alert alert-info">开始上传...</div>';
+        resumable.upload();
+    });
+
+    // 获取文件列表
+    function refreshFileList() {
+        axios.get(`${API_BASE_URL}/download/files`)
+            .then(function(response) {
+                if (response.data.length > 0) {
+                    let html = '';
+                    response.data.forEach(function(fileName) {
+                        html += `
+                            <div class="file-item">
+                                <span>${fileName}</span>
+                                <div>
+                                    <button class="btn btn-sm btn-primary me-2" onclick="downloadFile('${fileName}')">下载</button>
+                                    <button class="btn btn-sm btn-danger" onclick="deleteFile('${fileName}')">删除</button>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    fileList.innerHTML = html;
+                } else {
+                    fileList.innerHTML = '<div class="alert alert-info">没有文件</div>';
+                }
+            })
+            .catch(function(error) {
+                fileList.innerHTML = `<div class="alert alert-danger">获取文件列表失败: ${error.message}</div>`;
+            });
+    }
+
+    // 下载文件
+    function downloadFile(filename) {
+        const link = document.createElement('a');
+        link.href = `${API_BASE_URL}/download/file/${encodeURIComponent(filename)}`;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    // 删除文件
+    function deleteFile(filename) {
+        if (confirm(`确定要删除文件 "${filename}" 吗？`)) {
+            axios.delete(`${API_BASE_URL}/download/file/${encodeURIComponent(filename)}`)
+                .then(function(response) {
+                    alert('文件删除成功');
+                    refreshFileList();
+                })
+                .catch(function(error) {
+                    alert('文件删除失败: ' + error.message);
+                });
+        }
+    }
+
+    // 刷新按钮事件
+    refreshBtn.addEventListener('click', refreshFileList);
+
+    // 初始加载文件列表
+    document.addEventListener('DOMContentLoaded', function() {
+        refreshFileList();
+    });
+</script>
+
+</body>
+</html>
