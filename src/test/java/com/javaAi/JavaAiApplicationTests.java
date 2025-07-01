@@ -1,14 +1,1 @@
-package com.javaAi;
-
-import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
-
-
-@SpringBootTest
-class JavaAiApplicationTests {
-
-	@Test
-	void contextLoads() {
-	}
-
-}
+// 此文件内容已迁移到com/dailylearn/DailyLearnApplicationTests.java

@@ -1,4 +1,3 @@
-// 此文件内容已迁移到com/dailylearn/fileUpload/controller/FileDownloadController.java
 package com.dailylearn.fileUpload.controller;
 
 import org.slf4j.Logger;
@@ -64,17 +63,14 @@ public class FileDownloadController {
             }
 
             Resource resource = new FileSystemResource(file);
-            
             // 设置文件名编码，支持中文
             String encodedFilename = URLEncoder.encode(filename, StandardCharsets.UTF_8.toString())
                     .replaceAll("\\+", "%20");
-            
             return ResponseEntity.ok()
                     .contentType(MediaType.APPLICATION_OCTET_STREAM)
                     .header(HttpHeaders.CONTENT_DISPOSITION, 
                             "attachment; filename*=UTF-8''" + encodedFilename)
                     .body(resource);
-                    
         } catch (Exception e) {
             logger.error("文件下载失败: " + filename, e);
             return ResponseEntity.internalServerError().build();
@@ -91,7 +87,6 @@ public class FileDownloadController {
             if (!file.exists()) {
                 return ResponseEntity.notFound().build();
             }
-
             if (file.delete()) {
                 return ResponseEntity.ok("文件删除成功");
             } else {

@@ -1,13 +1,1 @@
-package com.javaAi;
-
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-
-@SpringBootApplication
-public class JavaAiApplication {
-
-	public static void main(String[] args) {
-		SpringApplication.run(JavaAiApplication.class, args);
-	}
-
-}
+// 此文件内容已迁移到com/dailylearn/DailyLearnApplication.java

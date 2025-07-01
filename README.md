@@ -29,7 +29,7 @@
 
 ### 文件结构
 ```
-src/main/java/com/javaAi/fileUpload/
+src/main/java/com/daily-learn/fileUpload/
 ├── controller/
 │   ├── FileUploadController.java    # 文件上传控制器
 │   └── FileDownloadController.java  # 文件下载控制器

@@ -77,5 +77,4 @@ public class FileUploadController {
             @RequestParam("totalChunks") Integer totalChunks) {
         return fileUploadService.mergeChunks(identifier, filename, totalChunks);
     }
-}
-
+} 

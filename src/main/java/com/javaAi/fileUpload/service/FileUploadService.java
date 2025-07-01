@@ -1,4 +1,4 @@
-package com.javaAi.fileUpload.service;
+package com.dailylearn.fileUpload.service;
 
 import cn.hutool.core.io.FileUtil;
 import com.javaAi.fileUpload.dto.FileChunkDTO;
