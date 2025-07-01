@@ -1,4 +1,4 @@
-package com.javaAi.proxy;
+package com.dailylearn.proxy;
 
 import org.springframework.stereotype.Service;
 

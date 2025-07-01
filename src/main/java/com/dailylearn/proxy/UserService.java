@@ -1,4 +1,4 @@
-package com.javaAi.proxy;
+package com.dailylearn.proxy;
 
 public interface UserService {
 
